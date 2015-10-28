@@ -529,6 +529,21 @@ func resourceAwsInstanceRead(d *schema.ResourceData, meta interface{}) error {
 		return err
 	}
 
+	// Read the attached network interfaces
+	network_interfaces := make([]string, 0, len(instance.NetworkInterfaces))
+	for _, ni := range instance.NetworkInterfaces {
+		// Make sure that `eth0` is the first interface in the list
+		if ni.Attachment.DeviceIndex == 0 {
+			network_interfaces = append([]string{*ni.NetworkInterfaceID}, network_interfaces)
+		} else {
+			network_interfaces = append(network_interfaces, *ni.NetworkInterfaceID)
+		}
+		log.Printf("[DEBUG] Setting Network Interface IDs: %#v", network_interfaces)
+		if err := d.Set("network_interface_ids", network_interfaces); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -570,9 +585,10 @@ func resourceAwsInstanceUpdate(d *schema.ResourceData, meta interface{}) error {
 				groups = append(groups, aws.String(v.(string)))
 			}
 		}
-		_, err := conn.ModifyInstanceAttribute(&ec2.ModifyInstanceAttributeInput{
-			InstanceId: aws.String(d.Id()),
-			Groups:     groups,
+
+		_, err := conn.ModifyNetworkInterfaceAttribute(&ec2.ModifyNetworkInterfaceAttributeInput{
+			NetworkInterfaceID: aws.String(d.Get("network_interface_ids").(*schema.Set).List()[0]),
+			Groups: groups,
 		})
 		if err != nil {
 			return err
